@@ -63,7 +63,7 @@ class Detect(nn.Module):
 
 
 class Model_prune(nn.Module):
-    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None):  # model, input channels, number of classes
+    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, pc=[]):  # model, input channels, number of classes, number of pruned channels
         super(Model_prune, self).__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -79,7 +79,7 @@ class Model_prune(nn.Module):
             logger.info('Overriding model.yaml nc=%g with nc=%g' % (self.yaml['nc'], nc))
             self.yaml['nc'] = nc  # override yaml value
         #print(self.yaml)
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
+        self.model, self.save, self.ch = parse_model(deepcopy(self.yaml), ch=[ch], pc=pc)  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         # print([x.shape for x in self.forward(torch.zeros(1, ch, 64, 64))])
 
@@ -195,12 +195,15 @@ class Model_prune(nn.Module):
         model_info(self, verbose, img_size)
 
 
-def parse_model(d, ch):  # model_dict, input_channels(3)
+def parse_model(d, ch, pc):  # model_dict, input_channels(3)
     logger.info('\n%3s%18s%3s%10s  %-40s%-30s' % ('', 'from', 'n', 'params', 'module', 'arguments'))
     anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
-
+    
+    print(pc)
+    new_ch = []
+    idx = 0
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         #print(args)
@@ -212,7 +215,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 pass
 
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in [Bottleneck, SPP, DWConv, MixConv2d, Focus, CrossConv, BottleneckCSP]:
+        if m in [Bottleneck, DWConv, MixConv2d, CrossConv, BottleneckCSP]:
             c1, c2 = ch[f], args[0]
 
             # Normal
@@ -237,20 +240,74 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             if m in [BottleneckCSP, C3]:
                 args.insert(2, n)
                 n = 1
-        elif m is Conv:
-            c1, c2 = c2, 64
+        elif m is Focus:
+            c1, c2 = c2, pc[idx]
             #c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
-            args = [c1, c2, *args[1:]]     
-        elif m is C3:
-            c1, c2, c3 = c2, 64, 65
+            args = [c1, c2, *args[1:]]
+            idx += 1
+            new_ch.append(c2)
+        elif m is SPP:
+            c1, c2 = ch[f], args[0]
+
+            # Normal
+            # if i > 0 and args[0] != no:  # channel expansion factor
+            #     ex = 1.75  # exponential (default 2.0)
+            #     e = math.log(c2 / ch[1]) / math.log(2)
+            #     c2 = int(ch[1] * ex ** e)
+            # if m != Focus:
+
+            c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
+
+            # Experimental
+            # if i > 0 and args[0] != no:  # channel expansion factor
+            #     ex = 1 + gw  # exponential (default 2.0)
+            #     ch1 = 32  # ch[1]
+            #     e = math.log(c2 / ch1) / math.log(2)  # level 1-n
+            #     c2 = int(ch1 * ex ** e)
+            # if m != Focus:
+            #     c2 = make_divisible(c2, 8) if c2 != no else c2
+
+            args = [c1, c2, *args[1:]]
             
-            args = [c1, c2, c3, *args[1:]]
+            idx += 2
+            
+            new_ch.append(-1)
+            new_ch.append(-1)
+
+        elif m is Conv:
+            c1, c2 = c2, pc[idx]
+            #c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
+            args = [c1, c2, *args[1:]]
+            idx += 1
+            new_ch.append(c2)
+            
+        elif m is C3:
+            c1, c2, c3, c4 = ch[f], args[0], pc[idx+1], pc[idx+2]
+            c5, c6 = [], []
+            
+            #c5.append(c2)
+            
+            #for k in range(n):
+            #  c5.append(pc[idx+2+k+1])
+            #  c6.append(pc[idx+2+k+1])
+
+            args = [c1, c2, c3, c4, *args[1:]]
             print("--------------------------------------- n ---------------------------------------")
             print(n)
-            args.insert(3, n)
-            print(args)            
+            args.insert(4, n)
+            idx += 3 + n*2
+            print(args)
+            
+            new_ch.append(-1)
+            new_ch.append(c3)
+            new_ch.append(c4)
+            
+            for _ in range(n):
+              new_ch.append(-1)
+              new_ch.append(-1)
+
             n = 1
-            c2 = c2 + c3
+            c2 = c4
             
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
@@ -281,7 +338,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         ch.append(c2)
         
         
-    return nn.Sequential(*layers), sorted(save)
+    return nn.Sequential(*layers), sorted(save), new_ch
 
 
 if __name__ == '__main__':

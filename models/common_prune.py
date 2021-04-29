@@ -73,12 +73,12 @@ class BottleneckCSP(nn.Module):
 
 class C3(nn.Module):
     # CSP Bottleneck with 3 convolutions
-    def __init__(self, c1, c2, c3, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out for cv1, ch_out for cv2, number, shortcut, groups, expansion
+    def __init__(self, c1, c2, c3, c4, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out for cv1, ch_out for cv2, number, shortcut, groups, expansion
         super(C3, self).__init__()
         #c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c2, 1, 1)
         self.cv2 = Conv(c1, c3, 1, 1)
-        self.cv3 = Conv(c2+c3, c2+c3, 1)  # act=FReLU(c2)
+        self.cv3 = Conv(c2+c3, c4, 1)  # act=FReLU(c2)
         self.m = nn.Sequential(*[Bottleneck(c2, c2, shortcut, g, e=1.0) for _ in range(n)])
         # self.m = nn.Sequential(*[CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)])
 
