@@ -201,19 +201,19 @@ def parse_model(d, ch, pc):  # model_dict, input_channels(3)
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
     
-    print(pc)
+#    print(pc)
     new_ch = []
     idx = 0
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
-        #print(args)
+        print(args)
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
             try:
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
             except:
                 pass
-
+        print('args', args)
         n = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in [Bottleneck, DWConv, MixConv2d, CrossConv, BottleneckCSP]:
             c1, c2 = ch[f], args[0]
@@ -284,6 +284,9 @@ def parse_model(d, ch, pc):  # model_dict, input_channels(3)
         elif m is C3:
             c1, c2, c3, c4 = ch[f], args[0], pc[idx+1], pc[idx+2]
             c5, c6 = [], []
+
+            c2 = make_divisible(c2 * gw, 8) if c2 != no else c2
+            print(i, c2)
             
             #c5.append(c2)
             
@@ -292,11 +295,11 @@ def parse_model(d, ch, pc):  # model_dict, input_channels(3)
             #  c6.append(pc[idx+2+k+1])
 
             args = [c1, c2, c3, c4, *args[1:]]
-            print("--------------------------------------- n ---------------------------------------")
-            print(n)
+            #print("--------------------------------------- n ---------------------------------------")
+            #print(n)
             args.insert(4, n)
             idx += 3 + n*2
-            print(args)
+            #print(args)
             
             new_ch.append(-1)
             new_ch.append(c3)
@@ -332,7 +335,7 @@ def parse_model(d, ch, pc):  # model_dict, input_channels(3)
         t = str(m)[8:-2].replace('__main__.', '')  # module type
         np = sum([x.numel() for x in m_.parameters()])  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
-        logger.info('%3s%18s%3s%10.0f  %-40s%-30s' % (i, f, n, np, t, args))  # print
+        # logger.info('%3s%18s%3s%10.0f  %-40s%-30s' % (i, f, n, np, t, args))  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)
         ch.append(c2)

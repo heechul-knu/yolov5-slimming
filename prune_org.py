@@ -131,7 +131,7 @@ def new_cfg(model, nc, ckpt):
     bn = torch.zeros(total)
 #print(bn)
     index = 0
-    percent = 0.01
+    percent = 0.1
     for k,m in enumerate(model.modules()):
         if isinstance(m, nn.BatchNorm2d):
             if k not in donntprune:
@@ -187,20 +187,20 @@ def new_cfg(model, nc, ckpt):
     print("\n")
     print("---------------------------------------------------- Making New model ----------------------------------------------------")
     newmodel = Model_prune(opt.cfg, ch=3, nc=nc, pc=cfg).to(device)
-#    print(newmodel.ch)
-#    print(len(newmodel.ch))
+    print(newmodel.ch)
+    print(len(newmodel.ch))
     
 
     # modify cfg_mask
-#    print(len(cfg))
-#    print(len(cfg_mask))
+    print(len(cfg))
+    print(len(cfg_mask))
     
     for i in range(len(cfg_mask)):
       if newmodel.ch[i] == -1: 
         cfg_mask[i] = torch.ones(cfg_mask[i].shape).float().cuda() #.count_nonzero()
 
-#    for i in range(len(cfg_mask)):
-#      print(cfg_mask[i].count_nonzero())
+    for i in range(len(cfg_mask)):
+      print(cfg_mask[i].count_nonzero())
             
 #    for k, m in enumerate(new_model.modules()):
 #        if isinstance(m, C3):
@@ -231,283 +231,28 @@ def new_cfg(model, nc, ckpt):
 #          print(layer_name)
 #          print(cfg[cnt])
 #          cnt += 1
+        
+
 
     
-    #print(newmodel)
-    old_modules = list(model.named_modules())
-    new_modules = list(newmodel.named_modules())
+    
+    old_modules = list(model.modules())
+    new_modules = list(newmodel.modules())
     layer_id_in_cfg = 0
     
-
-    bottleneck_last_conv_layer_name = ['model.2.m.1.cv2.conv', 'model.4.m.5.cv2.conv', 'model.6.m.5.cv2.conv', 'model.9.m.1.cv2.conv',  'model.13.m.1.cv2.conv', 'model.17.m.1.cv2.conv','model.20.m.1.cv2.conv', 'model.23.m.1.cv2.conv']
-
-
-    bottleneck_last_conv_end_mask = []
-
-    for layer_id in range(len(old_modules)):
-        name0, m0 = old_modules[layer_id]
-        name1, m1 = new_modules[layer_id]
-
-        if name0 in bottleneck_last_conv_layer_name:
-            end_mask = cfg_mask[layer_id_in_cfg]
-            bottleneck_last_conv_end_mask.append(end_mask.clone())
-        elif isinstance(m0, nn.BatchNorm2d):
-            layer_id_in_cfg += 1
-
-    layer_id_in_cfg = 0
     start_mask = torch.ones(12)
     end_mask = cfg_mask[layer_id_in_cfg]
-    bottleneck_start_mask = 0
     print("pruning...")
     v=0
-    concat_start_mask = []
-    detect_start_mask = []
     
-    conv_layer_name = ['model.1.conv', 'model.3.conv', 'model.5.conv', 'model.7.conv', 'model.10.conv', 'model.14.conv', 'model.18.conv', 'model.21.conv'] # noral conv
-    c3_cv1_conv_layer_name = ['model.2.cv1.conv', 'model.4.cv1.conv', 'model.6.cv1.conv', 'model.9.cv1.conv', 'model.13.cv1.conv', 'model.17.cv1.conv', 'model.20.cv1.conv', 'model.23.cv1.conv']
-    c3_cv2_conv_layer_name = ['model.2.cv2.conv', 'model.4.cv2.conv', 'model.6.cv2.conv', 'model.9.cv2.conv', 'model.13.cv2.conv', 'model.17.cv2.conv', 'model.20.cv2.conv', 'model.23.cv2.conv']
-    c3_cv3_conv_layer_name = ['model.2.cv3.conv', 'model.4.cv3.conv', 'model.6.cv3.conv', 'model.9.cv3.conv', 'model.13.cv3.conv', 'model.17.cv3.conv', 'model.20.cv3.conv', 'model.23.cv3.conv']
-    spp_cv1_conv_layer_name = ['model.8.cv1.conv']
-    spp_cv2_conv_layer_name = ['model.8.cv2.conv']
-    detect_conv_layer_name = ['model.24.m.0', 'model.24.m.1', 'model.24.m.2']
-    bottleneck_conv_layer_name = ['model.2.m.0.cv1.conv', 'model.2.m.0.cv2.conv', 'model.2.m.1.cv1.conv', \
-        'model.2.m.1.cv2.conv', 'model.4.m.0.cv1.conv', 'model.4.m.1.cv1.conv', 'model.4.m.2.cv1.conv', \
-            'model.4.m.3.cv1.conv', 'model.4.m.4.cv1.conv', 'model.4.m.5.cv1.conv', 'model.4.m.0.cv2.conv', \
-                'model.4.m.1.cv2.conv', 'model.4.m.2.cv2.conv', 'model.4.m.3.cv2.conv', 'model.4.m.4.cv2.conv', \
-                    'model.4.m.5.cv2.conv', 'model.6.m.0.cv1.conv', 'model.6.m.1.cv1.conv', 'model.6.m.2.cv1.conv', \
-                        'model.6.m.3.cv1.conv', 'model.6.m.4.cv1.conv', 'model.6.m.5.cv1.conv', 'model.6.m.0.cv2.conv', \
-                            'model.6.m.1.cv2.conv', 'model.6.m.2.cv2.conv', 'model.6.m.3.cv2.conv', 'model.6.m.4.cv2.conv', \
-                                'model.6.m.5.cv2.conv', 'model.9.m.0.cv1.conv', 'model.9.m.1.cv1.conv', 'model.9.m.0.cv2.conv', \
-                                    'model.9.m.1.cv2.conv', 'model.13.m.0.cv1.conv', 'model.13.m.1.cv1.conv', 'model.13.m.0.cv2.conv', \
-                                        'model.13.m.1.cv2.conv', 'model.17.m.0.cv1.conv', 'model.17.m.1.cv1.conv', 'model.17.m.0.cv2.conv', \
-                                            'model.17.m.1.cv2.conv','model.20.m.0.cv1.conv', 'model.20.m.1.cv1.conv', 'model.20.m.0.cv2.conv', \
-                                                'model.20.m.1.cv2.conv', 'model.23.m.0.cv1.conv', 'model.23.m.1.cv1.conv', 'model.23.m.0.cv2.conv', \
-                                                    'model.23.m.1.cv2.conv']
-
-#    bn_layer_name = ['bn', 'model.1.bn']
-
     for layer_id in range(len(old_modules)):
-        name0, m0 = old_modules[layer_id]
-        name1, m1 = new_modules[layer_id]
-
-        #print(name0)model.0.conv.
-        #print(m0)
-        if layer_id == 0:
-            continue
-
-        if 'model.0.conv.conv' in name0: # Focus
-            start_mask = torch.ones(12)
-            end_mask = cfg_mask[layer_id_in_cfg]
-            print("conv_layer_name")
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-            #######################################################
-
-            # mask for next layer
-            start_mask  = end_mask.clone()
-            layer_id_in_cfg += 1
-        elif name0 in conv_layer_name:
-            # normal conv layer
-            end_mask = cfg_mask[layer_id_in_cfg]
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-            #######################################################
-
-            # mask for next layer
-            start_mask  = end_mask.clone()
-            layer_id_in_cfg += 1
-        elif name0 in bottleneck_conv_layer_name:
-            end_mask = cfg_mask[layer_id_in_cfg]
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(bottleneck_start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-            #######################################################
-
-            # mask for next layer
-            bottleneck_start_mask = end_mask.clone()
-            layer_id_in_cfg += 1
-        elif name0 in c3_cv1_conv_layer_name:
-            if 'model.13.cv1.conv' in name0:
-                start_mask = torch.Tensor(concat_start_mask[1].tolist()+start_mask.tolist())
-            if 'model.17.cv1.conv' in name0:
-                start_mask = torch.Tensor(concat_start_mask[0].tolist()+start_mask.tolist())
-            if 'model.20.cv1.conv' in name0:
-                start_mask = torch.Tensor(concat_start_mask[3].tolist()+start_mask.tolist())
-            if 'model.23.cv1.conv' in name0:
-                start_mask = torch.Tensor(concat_start_mask[2].tolist()+start_mask.tolist())
-
-            end_mask = cfg_mask[layer_id_in_cfg]
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-            #######################################################
-
-            # mask for next layer
-            # start_mask  = end_mask.clone()
-            bottleneck_start_mask = end_mask.clone()
-            layer_id_in_cfg += 1   
-        elif name0 in c3_cv2_conv_layer_name:
-           # normal conv layer
-            end_mask = cfg_mask[layer_id_in_cfg]
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-            #######################################################
-
-            # mask for next layer
-            start_mask  = end_mask.clone()
-            layer_id_in_cfg += 1       
-        elif name0 in c3_cv3_conv_layer_name:
-            bottleneck_start_mask = bottleneck_last_conv_end_mask.pop(0)
-            start_mask = torch.Tensor(bottleneck_start_mask.tolist()+start_mask.tolist())
-            # normal conv layer
-            end_mask = cfg_mask[layer_id_in_cfg]
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-            #######################################################
-
-            # mask for next layer
-            start_mask  = end_mask.clone()
-            layer_id_in_cfg += 1
-        elif name0 in spp_cv1_conv_layer_name:
-            end_mask = cfg_mask[layer_id_in_cfg]
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-            #######################################################
-
-            # mask for next layer
-            start_mask  = end_mask.clone()
-            layer_id_in_cfg += 1            
-        elif name0 in spp_cv2_conv_layer_name:
-            start_mask = torch.Tensor(start_mask.tolist()+start_mask.tolist()+start_mask.tolist()+start_mask.tolist())
-            end_mask = cfg_mask[layer_id_in_cfg]
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-
-            #m1.bias.data = m0.bias.data[idx1.tolist()].clone()
-            #######################################################
-
-            # mask for next layer
-            start_mask  = end_mask.clone()
-            layer_id_in_cfg += 1   
-
-        elif name0 in detect_conv_layer_name:
-            start_mask = detect_start_mask.pop(0)
-            # end_mask = cfg_mask[layer_id_in_cfg]
-            # print("conv_layer_name")
-
-            ################### weight copy ########################
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            # idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            # if idx1.size == 1:
-            #     idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
-            w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            # w1 = w1[idx1.tolist(), :, :, :].clone()
-            m1.weight.data = w1.clone()
-
-            m1.bias.data = m0.bias.data.clone()
-            #######################################################
-
-            # mask for next layer
-            layer_id_in_cfg += 1
-
-        if 'model.4.cv3.conv' in name0 or 'model.6.cv3.conv' in name0 or 'model.10.conv' in name0 or 'model.14.conv' in name0:
-            concat_start_mask.append(start_mask)
-
-        if 'model.23.cv3.conv' in name0 or 'model.20.cv3.conv' in name0 or 'model.17.cv3.conv' in name0:
-            detect_start_mask.append(start_mask)
+        m0 = old_modules[layer_id]
+        m1 = new_modules[layer_id]
+        
+        print(m0)
 
         if isinstance(m0, nn.BatchNorm2d):# 向新模型中写入
-            # print("batchnorm!!!!!!!!!!!!!!!!")
+            print("batchnorm!!!!!!!!!!!!!!!!")
             idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
             if idx1.size == 1:
                 idx1 = np.resize(idx1,(1,))
@@ -516,73 +261,26 @@ def new_cfg(model, nc, ckpt):
             m1.bias.data = m0.bias.data[idx1.tolist()].clone()
             m1.running_mean = m0.running_mean[idx1.tolist()].clone()
             m1.running_var = m0.running_var[idx1.tolist()].clone()
-
-        # elif isinstance(m0, nn.Conv2d):
-        #     print("conv2d!!!!!!!!!!!!!!!!!")
-        #     print(name0)
-        #     if '.m' in name0:
-        #         if 'model.24.m' in name0:
-        #             continue
-        #         end_mask = cfg_mask[layer_id_in_cfg]
-        #         start_mask = end_mask.clone()
-        #         layer_id_in_cfg += 1
-        #         continue
-        #     print(start_mask.cpu().numpy().shape)
-
-        #     if 'model.13.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[1]))
-        #         start_mask = torch.Tensor(temp[1].tolist()+start_mask.tolist())
-        #         #print(name0, np.shape(start_mask))
-        #     if 'model.17.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[0]))
-        #         start_mask = torch.Tensor(temp[0].tolist()+start_mask.tolist())
-        #         #print(name0, np.shape(start_mask))
-        #     if 'model.20.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[3]))
-        #         start_mask = torch.Tensor(temp[3].tolist()+start_mask.tolist())
-        #         #print(name0, np.shape(start_mask))
-        #     if 'model.23.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[2]))
-        #         start_mask = torch.Tensor(temp[2].tolist()+start_mask.tolist())
-        #         #print(torch.sum(start_mask))
-        #         #print(name0, np.shape(start_mask))
+        elif isinstance(m0, nn.Conv2d):
+            print("conv2d!!!!!!!!!!!!!!!!!")
+            print(start_mask.cpu().numpy().shape)
+            end_mask = cfg_mask[layer_id_in_cfg]
+            print(old_modules[layer_id].weight.data.size())
+            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
+            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
+            print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
+            if idx0.size == 1:
+                idx0 = np.resize(idx0, (1,))
+            if idx1.size == 1:
+                idx1 = np.resize(idx1, (1,))
+            print(len(idx0.tolist()))
+            w1 = old_modules[layer_id].weight.data[:, idx0.tolist(), :, :].clone()
+            w1 = w1[idx1.tolist(), :, :, :].clone()
+            new_modules[layer_id].weight.data = w1.clone()
             
-        #     end_mask = cfg_mask[layer_id_in_cfg]
-            
-
-        #     #print(old_modules[layer_id].weight.data.size())
-        #     idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-        #     idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-        #     print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-        #     if idx0.size == 1:
-        #         idx0 = np.resize(idx0, (1,))
-        #     if idx1.size == 1:
-        #         idx1 = np.resize(idx1, (1,))
-        #     #print(len(idx0.tolist()))
-        #     w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-        #     w1 = w1[idx1.tolist(), :, :, :].clone()
-        #     m1.weight.data = w1.clone()
-            
-        #     start_mask  = end_mask.clone()
-        #     layer_id_in_cfg += 1
-
-        #     if 'model.4.cv3.conv' in name0 or 'model.6.cv3.conv' in name0 or 'model.10.conv' in name0 or 'model.14.conv' in name0:
-        #         temp.append(start_mask)
-            
-    print(newmodel)
+            start_mask = end_mask.clone()
+            layer_id_in_cfg += 1
     
-    # for k, m in enumerate(model.modules()):
-    #     if isinstance(m, nn.BatchNorm2d):
-    #         print('BN', m.weight.data)
-    #     elif isinstance(m, nn.Conv2d):
-    #         print('Conv', m.weight.data)
-    
-
-        
     '''    
     for layer_id in range(len(old_modules)):
         m0 = old_modules[layer_id]
