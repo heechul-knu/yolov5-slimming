@@ -131,7 +131,7 @@ def new_cfg(model, nc, ckpt):
     bn = torch.zeros(total)
 #print(bn)
     index = 0
-    percent = 0.01
+    percent = 0.1
     for k,m in enumerate(model.modules()):
         if isinstance(m, nn.BatchNorm2d):
             if k not in donntprune:
@@ -139,10 +139,13 @@ def new_cfg(model, nc, ckpt):
                 bn[index:(index+size)] = m.weight.data.abs().clone()
                 index += size
     y, i = torch.sort(bn)# y,i是从小到大排列所有的bn，y是weight，i是序号
+    print(y.shape)
 
-#    print(total)
+    print(total)
     thre_index = int(total * percent)
+    print(thre_index)
     thre = y[thre_index].cuda()
+    print(thre)
     pruned = 0
     cfg = []
     cfg_mask = []
@@ -162,13 +165,13 @@ def new_cfg(model, nc, ckpt):
                 m.bias.data.mul_(mask)
                 cfg.append(int(torch.sum(mask)))
                 cfg_mask.append(mask.clone())
-                print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
-                        format(k, mask.shape[0], int(torch.sum(mask))))
+                # print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
+                #         format(k, mask.shape[0], int(torch.sum(mask))))
             else:
                 dontp = m.weight.data.numel()
                 mask = torch.ones(m.weight.data.shape)
-                print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
-                        format(k, dontp, int(dontp)))
+                # print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
+                #         format(k, dontp, int(dontp)))
                 cfg.append(int(dontp))
                 cfg_mask.append(mask.clone())
     pruned_ratio = pruned/total

@@ -18,8 +18,8 @@ from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import plot_images, output_to_target, plot_study_txt
 from utils.torch_utils import select_device, time_synchronized, intersect_dicts
 
-#from models.yolo_prune import *
-from models.yolo import *
+from models.yolo_prune import *
+#from models.yolo import *
 
 
 def test(data,
@@ -66,8 +66,8 @@ def test(data,
         #model = attempt_load(weights, map_location=device)  # load FP32 model
         print(weights)
         ckpt = torch.load(weights[0], map_location=device)
-        #model = Model_prune(ckpt['model'].yaml, ch=3, nc=nc, pc=ckpt['cfg']).to(device)
-        model = Model(ckpt['model'].yaml, ch=3, nc=nc).to(device)
+        model = Model_prune(ckpt['model'].yaml, ch=3, nc=nc, pc=ckpt['cfg']).to(device)
+        # model = Model(ckpt['model'].yaml, ch=3, nc=nc).to(device)
         state_dict = ckpt['model'].float().state_dict()
         exclude = []
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
