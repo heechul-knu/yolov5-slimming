@@ -92,10 +92,11 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
         if hyp.get('anchors'):
             ckpt['model'].yaml['anchors'] = round(hyp['anchors'])  # force autoanchor
         model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc).to(device)  # create
-        exclude = ['anchor'] if opt.cfg or hyp.get('anchors') else []  # exclude keys
+        #exclude = ['anchor'] if opt.cfg or hyp.get('anchors') else []  # exclude keys
+        exclude = []
         state_dict = ckpt['model'].float().state_dict()  # to FP32
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
-        model.load_state_dict(state_dict, strict=False)  # load
+        model.load_state_dict(state_dict, strict=True)  # load
         logger.info('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))  # report
     else:
         model = Model(opt.cfg, ch=3, nc=nc).to(device)  # create
@@ -108,30 +109,17 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
 # heechul
 def new_cfg(model, nc, ckpt):
     donntprune = []
-#    print(model.yaml)
-#    for k,m in enumerate(model.modules()):
-#        if isinstance(m, SPP):
-#            print('--------------------------------------------- SPP ---------------------------------------------')
-#            x= k+m.froms-8
-#            donntprune.append(x)
-#            x = k-3
-#            donntprune.append(x)
-        
-#print(donntprune)
-#统计所有应该被裁的连接层的总大小
+
     total = 0
     for k,m in enumerate(model.modules()):
-         #print(m)
          if isinstance(m, nn.BatchNorm2d):
-             #print('bn')
-#             print(m.weight)
              if k not in donntprune:
                 total += m.weight.data.shape[0]
-#print(total)
+
     bn = torch.zeros(total)
-#print(bn)
+
     index = 0
-    percent = 0.1
+    percent = 0.01
     for k,m in enumerate(model.modules()):
         if isinstance(m, nn.BatchNorm2d):
             if k not in donntprune:
@@ -154,15 +142,14 @@ def new_cfg(model, nc, ckpt):
 
     layer_idx = []
     for k, m in enumerate(model.modules()):
-        #isinstance()函数来判断一个对象是否是一个已知的类型
         if isinstance(m, nn.BatchNorm2d):
             if k not in donntprune:
                 layer_idx.append(k)
                 weight_copy = m.weight.data.abs().clone()
                 mask = weight_copy.gt(thre).float().cuda()  # 掩模
                 pruned = pruned + mask.shape[0] - torch.sum(mask)
-                m.weight.data.mul_(mask)# 直接修改m，直接改了model的值，并放在了model中
-                m.bias.data.mul_(mask)
+                #m.weight.data.mul_(mask)# 直接修改m，直接改了model的值，并放在了model中
+                #m.bias.data.mul_(mask)
                 cfg.append(int(torch.sum(mask)))
                 cfg_mask.append(mask.clone())
                 # print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
@@ -177,74 +164,37 @@ def new_cfg(model, nc, ckpt):
     pruned_ratio = pruned/total
     print('Pre-processing Successful!')
     print('--'*30)
-    #print(cfg)
-    # 写出被减枝的cfg文件
-    
-
-    #for k,m in enumerate(model.modules()):
-    #    if isinstance(m, nn.Conv2d):
-    #        print(m.weight.data.shape)
-
-
-
     print("\n")
     print("---------------------------------------------------- Making New model ----------------------------------------------------")
     newmodel = Model_prune(opt.cfg, ch=3, nc=nc, pc=cfg).to(device)
-#    print(newmodel.ch)
-#    print(len(newmodel.ch))
-    
 
-    # modify cfg_mask
-#    print(len(cfg))
-#    print(len(cfg_mask))
-    
+    #newmodel = model
+
     for i in range(len(cfg_mask)):
       if newmodel.ch[i] == -1: 
         cfg_mask[i] = torch.ones(cfg_mask[i].shape).float().cuda() #.count_nonzero()
 
-#    for i in range(len(cfg_mask)):
-#      print(cfg_mask[i].count_nonzero())
-            
-#    for k, m in enumerate(new_model.modules()):
-#        if isinstance(m, C3):
-#          print("\nC3")
-#          layer_name = 'C3'
-#        if isinstance(m, Conv):
-#          print("\nConv")
-#          layer_name = 'Conv'
-#        elif isinstance(m, Focus):
-#          print("\nFocus")
-#          layer_name = 'Focus'          
-#        elif isinstance(m, SPP):
-#          print("\nSPP")
-#          layer_name = 'SPP'
-#          isspp = True
-#        elif isinstance(m, Detect):
-#          print("\nDetect")
-#          layer_name = 'Detect'
-#          break
-#        elif isinstance(m, nn.Conv2d):
-#          if is_spp:
-#            spp_conv_cnt += 1
-#            if spp_conv_cnt == 2:
-#              is_spp = False
-            
-#            break
-            
-#          print(layer_name)
-#          print(cfg[cnt])
-#          cnt += 1
-
-    
-    #print(newmodel)
+    total_pruned_channel = 0
+    total_channel = 0
+        
+    for i in range(len(cfg_mask)):
+      print(newmodel.ch[i], cfg_mask[i].count_nonzero(), cfg_mask[i].shape[0])
+      
+      if newmodel.ch[i] is not -1:
+        total_pruned_channel += newmodel.ch[i]
+      else:
+        total_pruned_channel += cfg_mask[i].shape[0]
+        
+      total_channel += cfg_mask[i].shape[0] 
+      
+    print("pruning ratio: %f" % (total_pruned_channel / total_channel))
+      
     old_modules = list(model.named_modules())
     new_modules = list(newmodel.named_modules())
     layer_id_in_cfg = 0
     
 
     bottleneck_last_conv_layer_name = ['model.2.m.1.cv2.conv', 'model.4.m.5.cv2.conv', 'model.6.m.5.cv2.conv', 'model.9.m.1.cv2.conv',  'model.13.m.1.cv2.conv', 'model.17.m.1.cv2.conv','model.20.m.1.cv2.conv', 'model.23.m.1.cv2.conv']
-
-
     bottleneck_last_conv_end_mask = []
 
     for layer_id in range(len(old_modules)):
@@ -288,6 +238,7 @@ def new_cfg(model, nc, ckpt):
                                                     'model.23.m.1.cv2.conv']
 
 #    bn_layer_name = ['bn', 'model.1.bn']
+
 
     for layer_id in range(len(old_modules)):
         name0, m0 = old_modules[layer_id]
@@ -392,7 +343,6 @@ def new_cfg(model, nc, ckpt):
             bottleneck_start_mask = end_mask.clone()
             layer_id_in_cfg += 1   
         elif name0 in c3_cv2_conv_layer_name:
-           # normal conv layer
             end_mask = cfg_mask[layer_id_in_cfg]
 
             ################### weight copy ########################
@@ -415,7 +365,7 @@ def new_cfg(model, nc, ckpt):
         elif name0 in c3_cv3_conv_layer_name:
             bottleneck_start_mask = bottleneck_last_conv_end_mask.pop(0)
             start_mask = torch.Tensor(bottleneck_start_mask.tolist()+start_mask.tolist())
-            # normal conv layer
+
             end_mask = cfg_mask[layer_id_in_cfg]
 
             ################### weight copy ########################
@@ -481,20 +431,14 @@ def new_cfg(model, nc, ckpt):
 
         elif name0 in detect_conv_layer_name:
             start_mask = detect_start_mask.pop(0)
-            # end_mask = cfg_mask[layer_id_in_cfg]
-            # print("conv_layer_name")
 
             ################### weight copy ########################
             idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            # idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            # print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
+
             if idx0.size == 1:
                 idx0 = np.resize(idx0, (1,))
-            # if idx1.size == 1:
-            #     idx1 = np.resize(idx1, (1,))
-            #print(len(idx0.tolist()))
+
             w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-            # w1 = w1[idx1.tolist(), :, :, :].clone()
             m1.weight.data = w1.clone()
 
             m1.bias.data = m0.bias.data.clone()
@@ -510,410 +454,27 @@ def new_cfg(model, nc, ckpt):
             detect_start_mask.append(start_mask)
 
         if isinstance(m0, nn.BatchNorm2d):# 向新模型中写入
-            # print("batchnorm!!!!!!!!!!!!!!!!")
             idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
             if idx1.size == 1:
                 idx1 = np.resize(idx1,(1,))
-            #print(idx1.size)
             m1.weight.data = m0.weight.data[idx1.tolist()].clone()
             m1.bias.data = m0.bias.data[idx1.tolist()].clone()
             m1.running_mean = m0.running_mean[idx1.tolist()].clone()
             m1.running_var = m0.running_var[idx1.tolist()].clone()
+            print(m1.weight.data)
+            #m1.weight.data[m1.weight.data < 0.5] = 0.
+            #m1.bias.data[m1.weight.data < 0.5] = 0.
+            #print(np.count_nonzero(m1.weight.data.cpu().numpy()) / m1.weight.data.cpu().numpy().shape[0])
 
-        # elif isinstance(m0, nn.Conv2d):
-        #     print("conv2d!!!!!!!!!!!!!!!!!")
-        #     print(name0)
-        #     if '.m' in name0:
-        #         if 'model.24.m' in name0:
-        #             continue
-        #         end_mask = cfg_mask[layer_id_in_cfg]
-        #         start_mask = end_mask.clone()
-        #         layer_id_in_cfg += 1
-        #         continue
-        #     print(start_mask.cpu().numpy().shape)
+         
+    #print(model)
+    #print(newmodel)
 
-        #     if 'model.13.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[1]))
-        #         start_mask = torch.Tensor(temp[1].tolist()+start_mask.tolist())
-        #         #print(name0, np.shape(start_mask))
-        #     if 'model.17.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[0]))
-        #         start_mask = torch.Tensor(temp[0].tolist()+start_mask.tolist())
-        #         #print(name0, np.shape(start_mask))
-        #     if 'model.20.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[3]))
-        #         start_mask = torch.Tensor(temp[3].tolist()+start_mask.tolist())
-        #         #print(name0, np.shape(start_mask))
-        #     if 'model.23.cv1.conv' in name0:
-        #         #print(np.shape(start_mask))
-        #         #print(np.shape(temp[2]))
-        #         start_mask = torch.Tensor(temp[2].tolist()+start_mask.tolist())
-        #         #print(torch.sum(start_mask))
-        #         #print(name0, np.shape(start_mask))
-            
-        #     end_mask = cfg_mask[layer_id_in_cfg]
-            
-
-        #     #print(old_modules[layer_id].weight.data.size())
-        #     idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-        #     idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-        #     print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-        #     if idx0.size == 1:
-        #         idx0 = np.resize(idx0, (1,))
-        #     if idx1.size == 1:
-        #         idx1 = np.resize(idx1, (1,))
-        #     #print(len(idx0.tolist()))
-        #     w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-        #     w1 = w1[idx1.tolist(), :, :, :].clone()
-        #     m1.weight.data = w1.clone()
-            
-        #     start_mask  = end_mask.clone()
-        #     layer_id_in_cfg += 1
-
-        #     if 'model.4.cv3.conv' in name0 or 'model.6.cv3.conv' in name0 or 'model.10.conv' in name0 or 'model.14.conv' in name0:
-        #         temp.append(start_mask)
-            
-    print(newmodel)
-    
-    # for k, m in enumerate(model.modules()):
-    #     if isinstance(m, nn.BatchNorm2d):
-    #         print('BN', m.weight.data)
-    #     elif isinstance(m, nn.Conv2d):
-    #         print('Conv', m.weight.data)
-    
-
-        
-    '''    
-    for layer_id in range(len(old_modules)):
-        m0 = old_modules[layer_id]
-        m1 = new_modules[layer_id]
-        print(m1)
-        if isinstance(m0, nn.BatchNorm2d):# 向新模型中写入
-            print("batchnorm!!!!!!!!!!!!!!!!")
-            print(end_mask.cpu().numpy())
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1,(1,))
-            #print(idx1.size)
-            m1.weight.data = m0.weight.data[idx1.tolist()].clone()
-            m1.bias.data = m0.bias.data[idx1.tolist()].clone()
-            m1.running_mean = m0.running_mean[idx1.tolist()].clone()
-            m1.running_var = m0.running_var[idx1.tolist()].clone()
-            layer_id_in_cfg += 1
-            start_mask = end_mask.clone()
-            if layer_id_in_cfg < len(cfg_mask):  # do not change in Final FC
-                end_mask = cfg_mask[layer_id_in_cfg]
-        elif newmodel.ch[layer_id_in_cfg] == -1:
-            print("pass!!!!!!!!!!!!!!!")
-            continue
-        elif isinstance(m0, nn.Conv2d):
-            print("conv2d!!!!!!!!!!!!!!!!!")
-            print(start_mask.cpu().numpy().shape)
-            print(old_modules[layer_id].weight.data.size())
-            idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-            idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-            print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-            if idx0.size == 1:
-                idx0 = np.resize(idx0, (1,))
-            if idx1.size == 1:
-                idx1 = np.resize(idx1, (1,))
-            print(len(idx0.tolist()))
-            w1 = old_modules[layer_id].weight.data[:, idx0.tolist(), :, :].clone()
-            w1 = w1[idx1.tolist(), :, :, :].clone()
-            new_modules[layer_id].weight.data = w1.clone()
-        elif isinstance(m0, nn.Sequential):
-            print("sequential!!!!!!!!!!!!!!!!")
-            for name in m0.named_children():
-                print(name)
-                if name[0].split("_")[0] == 'route':
-                    #print(old_modules[layer_id + 1].layers)
-                    #print(m0)
-                    ind = v+old_modules[layer_id + 1].layers[0]
-                    #print(ind)
-                    cfg_mask1 = cfg_mask[route_problem(model, ind)]
-                    #print(cfg_mask1.shape)
-                    if old_modules[layer_id + 1].layers[1]!=0:
-                        ind =v + old_modules[layer_id + 1].layers[1]
-                        #print(ind)
-                        cfg_mask1 = cfg_mask1.unsqueeze(0)
-                        #print(cfg_mask1.shape)
-                        cfg_mask2 = cfg_mask[route_problem(model, ind)].unsqueeze(0).cuda()
-                        #print(cfg_mask2.shape)
-                        cfg_mask3 = torch.cat((cfg_mask1,cfg_mask2),1)
-                        #print(cfg_mask3.shape)
-                        cfg_mask1 = cfg_mask3.squeeze(0)
-                        #print(cfg_mask1.shape)
-                    start_mask = cfg_mask1.clone()
-                elif name[0].split("_")[0] == 'reorg':
-                    stride = name[1].stride
-                    cfg_mask[layer_id_in_cfg-1] = torch.squeeze(start_mask.expand(int(stride*stride),int(start_mask.size(0))).transpose(1,0).contiguous().view(1,-1))
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_with_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-                    print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-                    if idx0.size == 1:
-                        idx0 = np.resize(idx0, (1,))
-                    if idx1.size == 1:
-                        idx1 = np.resize(idx1, (1,))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    w1 = w1[idx1.tolist(), :, :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_without_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                    new_modules[layer_id + 1].bias.data = old_modules[layer_id + 1].bias.data.clone()
-                    #print(new_modules[layer_id + 1].weight.data.size())
-                    print('Detect: In shape: {:d}, Out shape {:d}.'.format(new_modules[layer_id + 1].weight.data.size(1),
-                          new_modules[layer_id + 1].weight.data.size(0)))
-            v=v+1
-        elif isinstance(m0, C3):
-            print("C3!!!!!!!!!!!!!!!!")
-            for name in m0.named_children():
-                if name[0].split("_")[0] == 'route':
-                    #print(old_modules[layer_id + 1].layers)
-                    #print(m0)
-                    ind = v+old_modules[layer_id + 1].layers[0]
-                    #print(ind)
-                    cfg_mask1 = cfg_mask[route_problem(model, ind)]
-                    #print(cfg_mask1.shape)
-                    if old_modules[layer_id + 1].layers[1]!=0:
-                        ind =v + old_modules[layer_id + 1].layers[1]
-                        #print(ind)
-                        cfg_mask1 = cfg_mask1.unsqueeze(0)
-                        #print(cfg_mask1.shape)
-                        cfg_mask2 = cfg_mask[route_problem(model, ind)].unsqueeze(0).cuda()
-                        #print(cfg_mask2.shape)
-                        cfg_mask3 = torch.cat((cfg_mask1,cfg_mask2),1)
-                        #print(cfg_mask3.shape)
-                        cfg_mask1 = cfg_mask3.squeeze(0)
-                        #print(cfg_mask1.shape)
-                    start_mask = cfg_mask1.clone()
-                elif name[0].split("_")[0] == 'reorg':
-                    stride = name[1].stride
-                    cfg_mask[layer_id_in_cfg-1] = torch.squeeze(start_mask.expand(int(stride*stride),int(start_mask.size(0))).transpose(1,0).contiguous().view(1,-1))
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_with_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-                    print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-                    if idx0.size == 1:
-                        idx0 = np.resize(idx0, (1,))
-                    if idx1.size == 1:
-                        idx1 = np.resize(idx1, (1,))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    w1 = w1[idx1.tolist(), :, :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_without_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                    new_modules[layer_id + 1].bias.data = old_modules[layer_id + 1].bias.data.clone()
-                    #print(new_modules[layer_id + 1].weight.data.size())
-                    print('Detect: In shape: {:d}, Out shape {:d}.'.format(new_modules[layer_id + 1].weight.data.size(1),
-                          new_modules[layer_id + 1].weight.data.size(0)))
-            v=v+1            
-        elif isinstance(m0, Conv):
-            print("Conv!!!!!!!!!!!!!!!!!!!!")
-            for name in m0.named_children():
-                if name[0].split("_")[0] == 'route':
-                    #print(old_modules[layer_id + 1].layers)
-                    #print(m0)
-                    ind = v+old_modules[layer_id + 1].layers[0]
-                    #print(ind)
-                    cfg_mask1 = cfg_mask[route_problem(model, ind)]
-                    #print(cfg_mask1.shape)
-                    if old_modules[layer_id + 1].layers[1]!=0:
-                        ind =v + old_modules[layer_id + 1].layers[1]
-                        #print(ind)
-                        cfg_mask1 = cfg_mask1.unsqueeze(0)
-                        #print(cfg_mask1.shape)
-                        cfg_mask2 = cfg_mask[route_problem(model, ind)].unsqueeze(0).cuda()
-                        #print(cfg_mask2.shape)
-                        cfg_mask3 = torch.cat((cfg_mask1,cfg_mask2),1)
-                        #print(cfg_mask3.shape)
-                        cfg_mask1 = cfg_mask3.squeeze(0)
-                        #print(cfg_mask1.shape)
-                    start_mask = cfg_mask1.clone()
-                elif name[0].split("_")[0] == 'reorg':
-                    stride = name[1].stride
-                    cfg_mask[layer_id_in_cfg-1] = torch.squeeze(start_mask.expand(int(stride*stride),int(start_mask.size(0))).transpose(1,0).contiguous().view(1,-1))
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_with_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-                    print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-                    if idx0.size == 1:
-                        idx0 = np.resize(idx0, (1,))
-                    if idx1.size == 1:
-                        idx1 = np.resize(idx1, (1,))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    w1 = w1[idx1.tolist(), :, :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_without_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                    new_modules[layer_id + 1].bias.data = old_modules[layer_id + 1].bias.data.clone()
-                    #print(new_modules[layer_id + 1].weight.data.size())
-                    print('Detect: In shape: {:d}, Out shape {:d}.'.format(new_modules[layer_id + 1].weight.data.size(1),
-                          new_modules[layer_id + 1].weight.data.size(0)))
-            v=v+1                     
-        elif isinstance(m0, SPP):
-            for name in m0.named_children():
-                if name[0].split("_")[0] == 'route':
-                    #print(old_modules[layer_id + 1].layers)
-                    #print(m0)
-                    ind = v+old_modules[layer_id + 1].layers[0]
-                    #print(ind)
-                    cfg_mask1 = cfg_mask[route_problem(model, ind)]
-                    #print(cfg_mask1.shape)
-                    if old_modules[layer_id + 1].layers[1]!=0:
-                        ind =v + old_modules[layer_id + 1].layers[1]
-                        #print(ind)
-                        cfg_mask1 = cfg_mask1.unsqueeze(0)
-                        #print(cfg_mask1.shape)
-                        cfg_mask2 = cfg_mask[route_problem(model, ind)].unsqueeze(0).cuda()
-                        #print(cfg_mask2.shape)
-                        cfg_mask3 = torch.cat((cfg_mask1,cfg_mask2),1)
-                        #print(cfg_mask3.shape)
-                        cfg_mask1 = cfg_mask3.squeeze(0)
-                        #print(cfg_mask1.shape)
-                    start_mask = cfg_mask1.clone()
-                elif name[0].split("_")[0] == 'reorg':
-                    stride = name[1].stride
-                    cfg_mask[layer_id_in_cfg-1] = torch.squeeze(start_mask.expand(int(stride*stride),int(start_mask.size(0))).transpose(1,0).contiguous().view(1,-1))
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_with_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-                    print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-                    if idx0.size == 1:
-                        idx0 = np.resize(idx0, (1,))
-                    if idx1.size == 1:
-                        idx1 = np.resize(idx1, (1,))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    w1 = w1[idx1.tolist(), :, :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_without_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                    new_modules[layer_id + 1].bias.data = old_modules[layer_id + 1].bias.data.clone()
-                    #print(new_modules[layer_id + 1].weight.data.size())
-                    print('Detect: In shape: {:d}, Out shape {:d}.'.format(new_modules[layer_id + 1].weight.data.size(1),
-                          new_modules[layer_id + 1].weight.data.size(0)))
-            v=v+1      
-        elif isinstance(m0, Focus):
-            for name in m0.named_children():
-                if name[0].split("_")[0] == 'route':
-                    #print(old_modules[layer_id + 1].layers)
-                    #print(m0)
-                    ind = v+old_modules[layer_id + 1].layers[0]
-                    #print(ind)
-                    cfg_mask1 = cfg_mask[route_problem(model, ind)]
-                    #print(cfg_mask1.shape)
-                    if old_modules[layer_id + 1].layers[1]!=0:
-                        ind =v + old_modules[layer_id + 1].layers[1]
-                        #print(ind)
-                        cfg_mask1 = cfg_mask1.unsqueeze(0)
-                        #print(cfg_mask1.shape)
-                        cfg_mask2 = cfg_mask[route_problem(model, ind)].unsqueeze(0).cuda()
-                        #print(cfg_mask2.shape)
-                        cfg_mask3 = torch.cat((cfg_mask1,cfg_mask2),1)
-                        #print(cfg_mask3.shape)
-                        cfg_mask1 = cfg_mask3.squeeze(0)
-                        #print(cfg_mask1.shape)
-                    start_mask = cfg_mask1.clone()
-                elif name[0].split("_")[0] == 'reorg':
-                    stride = name[1].stride
-                    cfg_mask[layer_id_in_cfg-1] = torch.squeeze(start_mask.expand(int(stride*stride),int(start_mask.size(0))).transpose(1,0).contiguous().view(1,-1))
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_with_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-                    print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-                    if idx0.size == 1:
-                        idx0 = np.resize(idx0, (1,))
-                    if idx1.size == 1:
-                        idx1 = np.resize(idx1, (1,))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    w1 = w1[idx1.tolist(), :, :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_without_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                    new_modules[layer_id + 1].bias.data = old_modules[layer_id + 1].bias.data.clone()
-                    #print(new_modules[layer_id + 1].weight.data.size())
-                    print('Detect: In shape: {:d}, Out shape {:d}.'.format(new_modules[layer_id + 1].weight.data.size(1),
-                          new_modules[layer_id + 1].weight.data.size(0)))
-            v=v+1         
-        elif isinstance(m0, Detect):
-            for name in m0.named_children():
-                if name[0].split("_")[0] == 'route':
-                    #print(old_modules[layer_id + 1].layers)
-                    #print(m0)
-                    ind = v+old_modules[layer_id + 1].layers[0]
-                    #print(ind)
-                    cfg_mask1 = cfg_mask[route_problem(model, ind)]
-                    #print(cfg_mask1.shape)
-                    if old_modules[layer_id + 1].layers[1]!=0:
-                        ind =v + old_modules[layer_id + 1].layers[1]
-                        #print(ind)
-                        cfg_mask1 = cfg_mask1.unsqueeze(0)
-                        #print(cfg_mask1.shape)
-                        cfg_mask2 = cfg_mask[route_problem(model, ind)].unsqueeze(0).cuda()
-                        #print(cfg_mask2.shape)
-                        cfg_mask3 = torch.cat((cfg_mask1,cfg_mask2),1)
-                        #print(cfg_mask3.shape)
-                        cfg_mask1 = cfg_mask3.squeeze(0)
-                        #print(cfg_mask1.shape)
-                    start_mask = cfg_mask1.clone()
-                elif name[0].split("_")[0] == 'reorg':
-                    stride = name[1].stride
-                    cfg_mask[layer_id_in_cfg-1] = torch.squeeze(start_mask.expand(int(stride*stride),int(start_mask.size(0))).transpose(1,0).contiguous().view(1,-1))
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_with_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-                    print('Conv In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-                    if idx0.size == 1:
-                        idx0 = np.resize(idx0, (1,))
-                    if idx1.size == 1:
-                        idx1 = np.resize(idx1, (1,))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    w1 = w1[idx1.tolist(), :, :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                elif "_".join(name[0].split("_")[0:-1]) == 'conv_without_bn':
-                    idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                    w1 = old_modules[layer_id + 1].weight.data[:, idx0.tolist(), :, :].clone()
-                    new_modules[layer_id + 1].weight.data = w1.clone()
-                    new_modules[layer_id + 1].bias.data = old_modules[layer_id + 1].bias.data.clone()
-                    #print(new_modules[layer_id + 1].weight.data.size())
-                    print('Detect: In shape: {:d}, Out shape {:d}.'.format(new_modules[layer_id + 1].weight.data.size(1),
-                          new_modules[layer_id + 1].weight.data.size(0)))
-            v=v+1                                                   
-        elif isinstance(m0, nn.Linear):
-                idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-                if idx0.size == 1:
-                    idx0 = np.resize(idx0, (1,))
-                m1.weight.data = m0.weight.data[:, idx0].clone()
-                m1.bias.data = m0.bias.data.clone()
-    '''                
-                
     print('--'*30)
     print('prune done!')
     print('pruned ratio %.3f'%pruned_ratio)
     
-    #prunedweights = os.path.join('\\'.join(args.weightsfile.split("/")[0:-1]),"prune_"+args.weightsfile.split("/")[-1])
-    #print('save weights file in %s'%prunedweights)
-    #保存新模型权重
-    #newmodel.save_weights(prunedweights)
-    #print('done!')
-    
-    #print(newmodel)
-    
     ema = ModelEMA(newmodel)
-    
     epoch, best_fitness = 0, 0.0
 
     ckpt['model'] = ema.ema
@@ -923,22 +484,6 @@ def new_cfg(model, nc, ckpt):
     torch.save(ckpt, "./weights/pruned.pt")
 
     del ckpt
-
-
-
-#    new_model = nn.Sequential(*new_modules)
-
-#    print(new_model)
-#    i = 0
-
-    #print(cfg)
-#    cnt = 0
-#    layer_name = ''
-    
-    #print(new_model)
-#    is_spp = False
-#    spp_conv_cnt = 0
-    
 
 
 if __name__ == '__main__':

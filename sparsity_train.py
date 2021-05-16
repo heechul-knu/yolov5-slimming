@@ -45,7 +45,9 @@ except ImportError:
 def updateBN(model,s):
     for k,m in enumerate(model.modules()):
         if isinstance(m, nn.BatchNorm2d):
-            m.weight.grad.data.add_(s*torch.sign(m.weight.data))
+#            print(m.weight.data)
+            print(torch.sum(torch.abs(m.weight.data)))
+            m.weight.data.subtract_(s*torch.sign(m.weight.data))
 
 def train(hyp, opt, device, tb_writer=None, wandb=None):
     logger.info(f'Hyperparameters {hyp}')
@@ -88,7 +90,7 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
         if hyp.get('anchors'):
             ckpt['model'].yaml['anchors'] = round(hyp['anchors'])  # force autoanchor
         model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc).to(device)  # create
-        exclude = ['anchor'] if opt.cfg or hyp.get('anchors') else []  # exclude keys
+        exclude = ['anchors'] if opt.cfg or hyp.get('anchors') else []  # exclude keys
         state_dict = ckpt['model'].float().state_dict()  # to FP32
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
         model.load_state_dict(state_dict, strict=False)  # load
@@ -146,6 +148,7 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
 
     # Resume
     start_epoch, best_fitness = 0, 0.0
+    '''
     if pretrained:
         # Optimizer
         if ckpt['optimizer'] is not None:
@@ -167,6 +170,7 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
             epochs += ckpt['epoch']  # finetune additional epochs
 
         del ckpt, state_dict
+    '''
 
     # Image sizes
     gs = int(model.stride.max())  # grid size (max stride)
@@ -305,7 +309,7 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
             # Backward
             scaler.scale(loss).backward()
 
-            updateBN(model, 0.1)
+            updateBN(model, 0.00001)
 
             # Optimize
             if ni % accumulate == 0:
@@ -338,6 +342,7 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
 
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for tensorboard
+        #print(lr)
         scheduler.step()
 
         # DDP process 0 or single-GPU
