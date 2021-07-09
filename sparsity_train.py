@@ -45,9 +45,15 @@ except ImportError:
 def updateBN(model,s):
     for k,m in enumerate(model.modules()):
         if isinstance(m, nn.BatchNorm2d):
-#            print(m.weight.data)
-            print(torch.sum(torch.abs(m.weight.data)))
-            m.weight.data.subtract_(s*torch.sign(m.weight.data))
+            #원래#m.weight.grad.data.add_(s*torch.sign(m.weight.data))
+            m.weight.data.mul_(m.weight.grad.data).abs() #transtailor
+            #print(m.weight.data)
+            #print(torch.sum(torch.abs(m.weight.data))) # BN loss 출력
+            #m.weight.data.subtract_(s*torch.sign(m.weight.data))
+            #print(m.weight.data, '11111111111111111')
+            ##########m.weight.data.subtract_(s*(m.weight.grad+torch.sign(m.weight.data)))
+            #print(m.weight.data, '22222222222222222')
+            #break
 
 def train(hyp, opt, device, tb_writer=None, wandb=None):
     logger.info(f'Hyperparameters {hyp}')
@@ -452,7 +458,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/coco128.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='data/hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=300)
+    parser.add_argument('--epochs', type=int, default=3) #15
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='[train, test] image sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -473,7 +479,7 @@ if __name__ == '__main__':
     parser.add_argument('--log-imgs', type=int, default=16, help='number of images for W&B logging, max 100')
     parser.add_argument('--log-artifacts', action='store_true', help='log artifacts, i.e. final trained model')
     parser.add_argument('--workers', type=int, default=8, help='maximum number of dataloader workers')
-    parser.add_argument('--project', default='runs/train', help='save to project/name')
+    parser.add_argument('--project', default='runs/sparsity_train', help='save to project/name')
     parser.add_argument('--name', default='exp', help='save to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--quad', action='store_true', help='quad dataloader')

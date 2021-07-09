@@ -16,7 +16,7 @@ from utils.general import coco80_to_coco91_class, check_dataset, check_file, che
 from utils.loss import compute_loss
 from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import plot_images, output_to_target, plot_study_txt
-from utils.torch_utils import select_device, time_synchronized
+from utils.torch_utils import select_device, time_synchronized, prune
 
 
 def test(data,
@@ -63,6 +63,12 @@ def test(data,
     half = device.type != 'cpu'  # half precision only supported on CUDA
     if half:
         model.half()
+
+    
+    
+    prune(model, amount=0)
+
+
 
     # Configure
     model.eval()

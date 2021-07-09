@@ -1,0 +1,9 @@
+train: /home/ohyoonju/yolov5/dataset/images/train
+val: /home/ohyoonju/yolov5/dataset/images/val
+
+#train: /home/datasets/RecycleTrash/yolo/images/train/
+#val: /home/datasets/RecycleTrash/yolo/images/val/
+
+nc: 7
+
+names: ['c_1', 'c_2', 'c_3', 'c_4', 'c_5', 'c_6', 'c_7']

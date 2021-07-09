@@ -44,6 +44,24 @@ def get_latest_run(search_dir='.'):
     last_list = glob.glob(f'{search_dir}/**/last*.pt', recursive=True)
     return max(last_list, key=os.path.getctime) if last_list else ''
 
+def isdocker():
+    # Is environment a Docker container
+    return Path('/workspace').exists()  # or Path('/.dockerenv').exists()
+
+
+def emojis(str=''):
+    # Return platform-dependent emoji-safe version of string
+    return str.encode().decode('ascii', 'ignore') if platform.system() == 'Windows' else str
+
+
+def check_online():
+    # Check internet connectivity
+    import socket
+    try:
+        socket.create_connection(("1.1.1.1", 443), 5)  # check host accesability
+        return True
+    except OSError:
+        return False
 
 def check_git_status():
     # Suggest 'git pull' if repo is out of date

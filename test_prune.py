@@ -71,7 +71,7 @@ def test(data,
         state_dict = ckpt['model'].float().state_dict()
         exclude = []
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
-        model.load_state_dict(state_dict, strict=True)  # load
+        model.load_state_dict(state_dict, strict=False)  # load #True
 
         imgsz = check_img_size(imgsz, s=model.stride.max())  # check img_size
 

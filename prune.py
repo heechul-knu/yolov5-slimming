@@ -108,6 +108,54 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
 
 # heechul
 def new_cfg(model, nc, ckpt):
+
+    #local
+    '''
+    donntprune = []
+    percent = 0.1
+    total = 0
+    pruned = 0
+    cfg = []
+    cfg_mask = []
+    print('--'*30)
+    print("Pre-processing...")
+
+    layer_idx = []
+    for k, m in enumerate(model.modules()):
+        if isinstance(m, nn.BatchNorm2d):
+            if k not in donntprune:
+                size = m.weight.data.shape[0]
+                total += m.weight.data.shape[0]
+                layer_idx.append(k)
+                weight_copy = m.weight.data.abs().clone()
+                y, i = torch.sort(weight_copy)
+                thre_index = int(size * percent)
+                thre = y[thre_index].cuda()
+                mask = weight_copy.gt(thre).float().cuda()  # 掩模
+                pruned = pruned + mask.shape[0] - torch.sum(mask)
+                m.weight.data.mul_(mask)# 直接修改m，直接改了model的值，并放在了model中
+                m.bias.data.mul_(mask)
+                cfg.append(int(torch.sum(mask)))
+                cfg_mask.append(mask.clone())
+                # print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
+                #         format(k, mask.shape[0], int(torch.sum(mask))))
+            else:
+                dontp = m.weight.data.numel()
+                mask = torch.ones(m.weight.data.shape)
+                # print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
+                #         format(k, dontp, int(dontp)))
+                cfg.append(int(dontp))
+                cfg_mask.append(mask.clone())
+    pruned_ratio = pruned/total
+    print(pruned_ratio)
+    '''
+
+    #global
+    
+    for name, module in model.named_modules():
+        print(name)
+
+
     donntprune = []
 
     total = 0
@@ -119,21 +167,21 @@ def new_cfg(model, nc, ckpt):
     bn = torch.zeros(total)
 
     index = 0
-    percent = 0.01
+    percent = 0.1
     for k,m in enumerate(model.modules()):
         if isinstance(m, nn.BatchNorm2d):
             if k not in donntprune:
-                size = m.weight.data.shape[0]
+                size = m.weight.data.shape[0]                
                 bn[index:(index+size)] = m.weight.data.abs().clone()
                 index += size
     y, i = torch.sort(bn)# y,i是从小到大排列所有的bn，y是weight，i是序号
-    print(y.shape)
+    #print(y.shape)
 
-    print(total)
+    #print(total)
     thre_index = int(total * percent)
-    print(thre_index)
+    #print(thre_index)
     thre = y[thre_index].cuda()
-    print(thre)
+    print('threshold:', thre)
     pruned = 0
     cfg = []
     cfg_mask = []
@@ -162,10 +210,16 @@ def new_cfg(model, nc, ckpt):
                 cfg.append(int(dontp))
                 cfg_mask.append(mask.clone())
     pruned_ratio = pruned/total
+    print(pruned_ratio)
+    
+
+    
     print('Pre-processing Successful!')
+    
     print('--'*30)
     print("\n")
     print("---------------------------------------------------- Making New model ----------------------------------------------------")
+    
     newmodel = Model_prune(opt.cfg, ch=3, nc=nc, pc=cfg).to(device)
 
     #newmodel = model
@@ -188,7 +242,8 @@ def new_cfg(model, nc, ckpt):
       total_channel += cfg_mask[i].shape[0] 
       
     print("pruning ratio: %f" % (total_pruned_channel / total_channel))
-      
+    
+    
     old_modules = list(model.named_modules())
     new_modules = list(newmodel.named_modules())
     layer_id_in_cfg = 0
@@ -461,11 +516,11 @@ def new_cfg(model, nc, ckpt):
             m1.bias.data = m0.bias.data[idx1.tolist()].clone()
             m1.running_mean = m0.running_mean[idx1.tolist()].clone()
             m1.running_var = m0.running_var[idx1.tolist()].clone()
-            print(m1.weight.data)
+            #print(m1.weight.data)
             #m1.weight.data[m1.weight.data < 0.5] = 0.
             #m1.bias.data[m1.weight.data < 0.5] = 0.
             #print(np.count_nonzero(m1.weight.data.cpu().numpy()) / m1.weight.data.cpu().numpy().shape[0])
-
+    
          
     #print(model)
     #print(newmodel)
@@ -474,11 +529,11 @@ def new_cfg(model, nc, ckpt):
     print('prune done!')
     print('pruned ratio %.3f'%pruned_ratio)
     
-    ema = ModelEMA(newmodel)
+    ema = ModelEMA(newmodel) #newmodel #model
     epoch, best_fitness = 0, 0.0
 
     ckpt['model'] = ema.ema
-    ckpt['cfg'] = cfg
+    ckpt['cfg'] = cfg #cfg #opt.cfg
     
     # Save last, best and delete
     torch.save(ckpt, "./weights/pruned.pt")
