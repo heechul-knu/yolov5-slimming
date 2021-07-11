@@ -60,13 +60,14 @@ def test(data,
         #     model = nn.DataParallel(model)
 
     # Half
+    #half = False
     half = device.type != 'cpu'  # half precision only supported on CUDA
     if half:
         model.half()
 
     
     
-    prune(model, amount=0)
+    #prune(model, amount=0)
 
 
 

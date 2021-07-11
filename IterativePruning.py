@@ -241,10 +241,10 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
     num = 0
     while True:
         if num == 0:
-            prune_rate = 0.3
+            prune_rate = 0.2
             num += 1
         else:
-            prune_rate = 0.05
+            prune_rate = 0.1
             num += 1
         print('#', num)
         prune(model, amount=prune_rate)
